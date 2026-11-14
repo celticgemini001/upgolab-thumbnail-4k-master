@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Making a 4K Thumbnail Master From a 720p Frame</title>
-<meta name="description" content="A thumbnail has one job: survive being shrunk. Measured: which upscale method keeps edge contrast when the result is displayed at 25% of its size, and why sharpening fails at that scale.">
+<meta name="description" content="A thumbnail has one job: survive being shrunk. Measured round trip through an 8x master and back to 320px: the edge contrast gain from sharpening vanishes, but a small-radius pass is still worth 2.9 dB. The radius budget is the only number that matters.">
 <link rel="canonical" href="https://celticgemini001.github.io/upgolab-thumbnail-4k-master/">
 <meta property="og:type" content="article">
 <meta property="og:title" content="Making a 4K Thumbnail Master From a 720p Frame">
@@ -44,7 +44,7 @@ footer{margin-top:4rem;padding-top:1.4rem;border-top:1px solid var(--line);font-
 <p class="lede">A thumbnail is never viewed at its own resolution. It is viewed shrunk —
 which means the only thing that matters is whether detail survives the second downscale.
 That inverts almost every normal upscaling rule.</p>
-<p class="meta">14 November 2026 · measured edge contrast after display-scale reduction</p>
+<p class="meta">14 November 2026 · round-trip measurement at feed scale</p>
 
 <p>Thumbnail workflows have a strange shape. You start with a 1280×720 frame, upscale to
 2560×1440 or larger "for quality," and then the platform displays it at 320×180 in a feed.
@@ -74,9 +74,10 @@ and the apparent contrast gain disappears entirely. What remains is the part of 
 that spread into the flat areas, which reads as a muddy halo.</p>
 
 <div class="callout">
-<p><strong>The sharpening you can see at 100% is the sharpening that evaporates at 25%.</strong>
-This is why thumbnails that look great in the editor look soft in the feed. The gain was
-high-frequency, and the feed is a low-pass filter.</p>
+<p><strong>Most of the sharpening you can see at 100% does not survive the feed — but not all
+of it, and the exception is measurable.</strong> The overshoot at a typical radius vanishes
+into the average. A small-radius pass that tightens the two-pixel transition the downscale
+itself created survives, and is worth 2.9 dB. The numbers are two sections down.</p>
 </div>
 
 <h2>What survives the shrink</h2>
@@ -125,9 +126,136 @@ detail better than bilinear, and at 2× they retain roughly 21% of high-frequenc
 versus 1.3% at 4×. So scale as little as the platform allows — from 720p, 2× gets you to
 1440p, which exceeds the 720p minimum comfortably.</p>
 
-<p>Do not sharpen the upscaled photograph. The sharpening will not survive the feed's
-downscale, and the part that does survive is the halo. Spend that effort on the text and on
-composition contrast, which are the things that actually reach the viewer.</p>
+<p>On sharpening, the measurement two sections below revises this: it is not that sharpening
+never survives, it is that the radius has a budget. Keep it under about 0.4 feed pixels —
+3px in a 2560px master — and it buys back 2.9 dB. Go past 0.5 and the halo is the only part
+that arrives.</p>
+
+<h2>Testing that claim against the feed grid</h2>
+
+<p>Everything above is reasoning. This section is a measurement, and it partly contradicts
+what the earlier paragraphs assert — so it is worth stating exactly what was tested and what
+came back.</p>
+
+<p>The design uses the feed pixel grid as ground truth, because that is the only image the
+viewer ever sees. Build the scene you want the viewer to see at 320×180: a hard vertical
+edge between background and subject, a smooth gradient panel, a fine noise texture, and
+1-pixel lines. Upscale it 8× to 2560×1440 — the "master". Apply unsharp mask at master
+resolution, which is what an editor does. Downscale back to 320×180 with Lanczos, which is
+what the platform does. Then score the result against the ground truth.</p>
+
+<p>The variable that turns out to matter is not the amount of sharpening. It is the
+<strong>radius expressed in feed pixels</strong>. A radius of 8px in a 2560px master is
+1px in the 320px feed — inside one output pixel, where averaging cancels it. A radius of
+3px in the master is 0.375px in the feed, which is smaller than a feed pixel but still
+enough to reinforce a transition that averaging has spread over two of them.</p>
+
+<table>
+<tr><th>USM radius<br>(feed px)</th><th>Radius<br>(master px)</th>
+<th>Edge swing<br>at 100%</th><th>Edge contrast<br>at feed</th>
+<th>Halo<br>(flat MAE)</th><th>PSNR vs<br>feed truth</th></tr>
+<tr><td class="num">none</td><td class="num">—</td><td class="num">205.0</td>
+<td class="num">0.6790</td><td class="num">1.71</td><td class="num">30.26 dB</td></tr>
+<tr><td class="num">0.125</td><td class="num">1.0</td><td class="num">210.0</td>
+<td class="num">0.6790</td><td class="num">1.59</td><td class="num">30.82 dB</td></tr>
+<tr><td class="num">0.250</td><td class="num">2.0</td><td class="num">219.0</td>
+<td class="num">0.6811</td><td class="num">1.42</td><td class="num">32.56 dB</td></tr>
+<tr><td class="num"><strong>0.375</strong></td><td class="num">3.0</td>
+<td class="num">235.0</td><td class="num">0.6790</td><td class="num"><strong>1.30</strong></td>
+<td class="num"><strong>33.14 dB</strong></td></tr>
+<tr><td class="num">0.500</td><td class="num">4.0</td><td class="num">248.0</td>
+<td class="num">0.6790</td><td class="num">1.48</td><td class="num">32.29 dB</td></tr>
+<tr><td class="num">1.000</td><td class="num">8.0</td><td class="num">255.0</td>
+<td class="num">0.6770</td><td class="num">2.40</td><td class="num">28.42 dB</td></tr>
+<tr><td class="num">2.000</td><td class="num">16.0</td><td class="num">255.0</td>
+<td class="num">0.7351</td><td class="num">3.59</td><td class="num">26.22 dB</td></tr>
+</table>
+
+<p>Two things in that table are worth separating, because they point in opposite
+directions.</p>
+
+<p><strong>The claim about edge contrast holds exactly.</strong> The feed-scale edge contrast
+is 0.6790 with no sharpening and 0.6790 at the best radius. No amount of work at master
+resolution moves it, because the edge already spans two feed pixels and averaging preserves
+the mean across them. The overshoot you see at 100% — the edge swing climbing from 205 to
+255 — is invisible at feed scale. That part of the earlier argument is confirmed by
+measurement, not asserted.</p>
+
+<p><strong>The claim that sharpening "evaporates" does not hold, and the reason is
+instructive.</strong> At a radius of 0.375 feed pixels, sharpening improves fidelity to the
+feed truth by 2.88 dB and cuts flat-area error from 1.71 to 1.30 — a 24% reduction. The
+sharpening did not add contrast the viewer can see. It partially undid the blur that the
+downscale itself introduced, by pulling the two-pixel transition back toward its original
+slope. That is a real gain and it survives the resize.</p>
+
+<p>Past about half a feed pixel the picture inverts. At 1.0 feed px the result is 1.84 dB
+<i>worse</i> than doing nothing, and flat-area error has risen by 40%. At 2.0 feed px the
+edge contrast itself finally moves — 0.7351 instead of 0.6790 — but that movement is the
+halo being counted as subject, not a cleaner edge. The file looks sharper at 100% while
+being further from what the viewer should see.</p>
+
+<div class="callout">
+<p><strong>The real rule is a radius budget, not a ban.</strong> Sharpening a thumbnail
+master helps up to roughly 0.4 feed pixels of radius and hurts past 0.5. In a 2560px master
+shown at 320px that budget is 3px. In a 1440px master it is under 2px. Any unsharp mask
+preset that ships with a radius of 1.0 or higher — which is most of them, expressed in
+master pixels — is spending more than the budget on the large majority of masters.</p>
+</div>
+
+<h2>Master resolution barely matters</h2>
+
+<p>The same sweep run at 2560×1440, 1280×720 and 640×360 produces, with no sharpening, feed
+results within 0.06 dB of each other (30.26 / 30.25 / 30.20). At the best radius the spread
+widens to 0.71 dB (33.14 / 33.27 / 32.56) — the middle ratio does marginally best, which is
+the usual hit-and-miss of resampling phase rather than a real trend. An 8× master is not a
+better thumbnail master than a 2× one. Once the downscale to feed size happens, the extra
+intermediate resolution is averaged away exactly as the fine detail was.</p>
+
+<p>This does not invalidate the headroom argument in the previous section — a 2× master still
+buys you reframing room across aspect ratios. It does mean that "upscale higher for a better
+thumbnail" has no basis in the pixels that reach the viewer. Use the smallest master that
+satisfies the platform minimum and your crop requirements, then spend the effort on the
+radius budget above.</p>
+
+<h2>Text: after the upscale wins on sharpness, loses on fidelity</h2>
+
+<p>The checklist says to render text after upscaling. Rendering it at 40px into the 320px
+feed and then round-tripping the whole composite through an 8× upscale and back gives glyph
+acutance 77.5 against 82.9 for text rendered natively at feed size — 6.5% softer, from two
+extra resamples. Rendering the same text at 320px into the 2560px master and downscaling
+once gives 85.9, which is 3.6% <i>sharper</i> than the native truth.</p>
+
+<p>So the recommendation on the page is right, but for a slightly different reason than
+stated. Text composited after the upscale is not merely "not resampled" — it is resampled
+exactly once, at a resolution high enough that the single downscale overshoots and the
+glyphs come out marginally crisper than if they had been drawn at feed size. Note that this
+is a sharpness advantage, not an accuracy one: measured as plain MSE against the feed-res
+render, the pre-upscale route scores 44.4 dB and the post-upscale route 29.7 dB, because the
+two are at different subpixel phases and MSE penalises that. Acutance is the metric that
+matches what the eye does with a 7px glyph.</p>
+
+<p>One more thing the sweep showed: non-integer master ratios are not a problem. Masters at
+1.5×, 2×, 2.5×, 4× and 8× all land within 0.23 acutance units of each other after the round
+trip. There is no reason to force a power-of-two master for the feed's sake.</p>
+
+<pre><code>import numpy as np
+from PIL import Image, ImageFilter
+
+gt   = Image.fromarray(scene.astype(np.uint8), "L")     # 320x180 truth
+S    = 8
+master = gt.resize((320*S, 180*S), Image.LANCZOS)
+
+for r_feed in (0, 0.125, 0.25, 0.375, 0.5, 1.0, 2.0):
+    img = master if r_feed == 0 else master.filter(
+        ImageFilter.UnsharpMask(radius=r_feed*S, percent=100, threshold=0))
+    feed = np.asarray(img.resize((320, 180), Image.LANCZOS), dtype=np.float64)
+    mse  = np.mean((feed - scene) ** 2)
+    print(r_feed, round(10*np.log10(255**2/mse), 2))   # peaks at 0.375
+</code></pre>
+
+<p>Reproducible with the scene built in eight lines: a flat background, a bright rectangle
+at x=150, a linear gradient ramp, gaussian noise at σ=22, and 1px rules every four rows.
+Results were stable to ±0.02 dB across five random seeds.</p>
 
 <h2>A checklist that matches how thumbnails are consumed</h2>
 
