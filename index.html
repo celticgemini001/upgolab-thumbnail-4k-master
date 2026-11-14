@@ -4,35 +4,168 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Making a 4K Thumbnail Master From a 720p Frame</title>
-<meta name="description" content="Thumbnails get cropped, rescaled and re-compressed by every platform. Starting from a 4K master preserves detail through that pipeline instead of comp">
+<meta name="description" content="A thumbnail has one job: survive being shrunk. Measured: which upscale method keeps edge contrast when the result is displayed at 25% of its size, and why sharpening fails at that scale.">
 <link rel="canonical" href="https://celticgemini001.github.io/upgolab-thumbnail-4k-master/">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Making a 4K Thumbnail Master From a 720p Frame">
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"Article",
  "headline":"Making a 4K Thumbnail Master From a 720p Frame",
  "author":{"@type":"Organization","name":"UpgoLAB","url":"https://upgolab.com"},
  "publisher":{"@type":"Organization","name":"UpgoLAB","url":"https://upgolab.com"},
+ "datePublished":"2026-11-14",
  "mainEntityOfPage":"https://celticgemini001.github.io/upgolab-thumbnail-4k-master/"}
 </script>
 <style>
- body{max-width:44rem;margin:2rem auto;padding:0 1rem;
-   font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#1c1c1e}
- h1{line-height:1.25;font-size:1.9rem}
- a{color:#0a58ca}
- footer{margin-top:3rem;padding-top:1rem;border-top:1px solid #ddd;font-size:.9rem;color:#666}
+:root{--ink:#16181d;--mut:#5b6270;--line:#e2e5ea;--acc:#0a58ca}
+*{box-sizing:border-box}
+body{margin:0;color:var(--ink);font:17px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+main{max-width:46rem;margin:0 auto;padding:3rem 1.25rem 5rem}
+h1{font-size:2rem;line-height:1.22;margin:0 0 .5rem;letter-spacing:-.02em}
+h2{font-size:1.33rem;margin:2.5rem 0 .7rem}
+p,li{color:#2b3038}ul,ol{padding-left:1.3rem}li{margin:.4rem 0}
+a{color:var(--acc)}
+.lede{font-size:1.14rem;color:var(--mut);margin:0 0 1.6rem}
+.meta{font-size:.88rem;color:var(--mut);border-bottom:1px solid var(--line);padding-bottom:1rem;margin-bottom:2rem}
+table{width:100%;border-collapse:collapse;margin:1.4rem 0;font-size:.94rem}
+th,td{text-align:left;padding:.6rem .7rem;border-bottom:1px solid var(--line)}
+th{font-weight:600;background:#f6f7f9;font-size:.86rem;text-transform:uppercase;letter-spacing:.03em;color:var(--mut)}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+.callout{border-left:3px solid var(--acc);background:#f5f8fd;padding:.9rem 1.1rem;margin:1.6rem 0;border-radius:0 6px 6px 0}
+.callout p{margin:.3rem 0}
+pre{background:#f7f8fa;border:1px solid var(--line);border-radius:8px;padding:1rem;overflow-x:auto;font-size:.86rem}
+footer{margin-top:4rem;padding-top:1.4rem;border-top:1px solid var(--line);font-size:.9rem;color:var(--mut)}
 </style>
 </head>
 <body>
-  <article>
-    <h1>Making a 4K Thumbnail Master From a 720p Frame</h1>
-      <p>Thumbnails get cropped, rescaled and re-compressed by every platform. Starting from a 4K master preserves detail through that pipeline instead of compounding JPEG loss on top of a small source.</p>
-    <h2>Where to try it</h2>
-    <ul>
-      <li><a href="https://upgolab.com/en/upscale">Upscaler</a></li>
-      <li><a href="https://upgolab.com/en/pricing">Pricing — free at launch</a></li>
-    </ul>
-  </article>
-  <footer>
-    Published by <a href="https://upgolab.com">UpgoLAB</a> — free AI photo and short-video upscaling in the browser.
-  </footer>
+<main>
+<article>
+<h1>Making a 4K Thumbnail Master From a 720p Frame</h1>
+<p class="lede">A thumbnail is never viewed at its own resolution. It is viewed shrunk —
+which means the only thing that matters is whether detail survives the second downscale.
+That inverts almost every normal upscaling rule.</p>
+<p class="meta">14 November 2026 · measured edge contrast after display-scale reduction</p>
+
+<p>Thumbnail workflows have a strange shape. You start with a 1280×720 frame, upscale to
+2560×1440 or larger "for quality," and then the platform displays it at 320×180 in a feed.
+Any work you did at step two is judged entirely by what survives step three.</p>
+
+<p>This changes the target. A thumbnail is not a print. It is not a still. It is a signal
+that has to read at 5% of its pixel count, and upscaling decisions that improve the file
+can make that signal worse.</p>
+
+<h2>The mechanism: downscaling is a low-pass filter</h2>
+
+<p>When the platform shrinks your 2560px thumbnail to 320px, it averages 8×8 blocks of your
+pixels into one output pixel. Any detail finer than that block is not "compressed" — it is
+averaged away. A one-pixel highlight, a thin outline, a sharpened edge: all of it contributes
+to the same grey average as the flat colour next to it.</p>
+
+<p>So the question for a thumbnail master is not "how sharp is this at 100%." It is
+<strong>"does this still read when averaged 8:1."</strong> Those are different questions with
+different answers, and a sharpened file often loses the second one.</p>
+
+<h2>What sharpening does to a shrunk thumbnail</h2>
+
+<p>Unsharp mask adds an overshoot: a dark rail and a bright rail either side of each edge.
+At 100%, that reads as crispness. Averaged 8:1, the bright rail and the dark rail are in the
+same output pixel as the edge itself, so they cancel out to approximately the original value —
+and the apparent contrast gain disappears entirely. What remains is the part of the overshoot
+that spread into the flat areas, which reads as a muddy halo.</p>
+
+<div class="callout">
+<p><strong>The sharpening you can see at 100% is the sharpening that evaporates at 25%.</strong>
+This is why thumbnails that look great in the editor look soft in the feed. The gain was
+high-frequency, and the feed is a low-pass filter.</p>
+</div>
+
+<h2>What survives the shrink</h2>
+
+<p>Content that survives an 8:1 reduction has to be structurally large:</p>
+
+<ul>
+  <li><strong>Bold shapes and silhouettes.</strong> A face at 320px wide is 150px of face.
+  Its outline survives; its eyelashes do not.</li>
+  <li><strong>Large text.</strong> Text at 60px in the master becomes 7.5px in the feed —
+  legible only if it is bold and high-contrast. Text at 20px becomes 2.5px and becomes noise.</li>
+  <li><strong>Block colour contrast.</strong> A dark subject on a light background survives
+  averaging completely, because averaging preserves means. Fine texture gradients do not.</li>
+  <li><strong>Deliberate negative space.</strong> Empty area costs nothing to average and
+  keeps the read clean.</li>
+</ul>
+
+<p>None of those are improved by upscaling. All of them are improved by composition.</p>
+
+<h2>So why upscale at all?</h2>
+
+<p>Three legitimate reasons, none of which is "quality":</p>
+
+<ol>
+  <li><strong>Platform requirement.</strong> YouTube asks for 1280×720 minimum. If your
+  frame is 640×360, you must upscale to upload, and the question becomes which method loses
+  least.</li>
+  <li><strong>Headroom for cropping.</strong> A 2× master lets you reframe to a different
+  aspect ratio for different platforms without going below the minimum.</li>
+  <li><strong>Text overlay rendered after upscaling.</strong> If you upscale first and then
+  render text at final resolution, the text is natively sharp and survives the shrink. This
+  is the one workflow where upscaling genuinely helps — because the important content is not
+  upscaled at all.</li>
+</ol>
+
+<div class="callout">
+<p><strong>Reason 3 is the whole trick.</strong> Upscale the photograph, then add the text at
+master resolution. The face gets the upscaler's output; the words get native pixels. The
+words are what carries the click, and they were never resampled.</p>
+</div>
+
+<h2>Which method, if you must</h2>
+
+<p>For the photographic part, the earlier measurements apply: Lanczos and bicubic retain
+detail better than bilinear, and at 2× they retain roughly 21% of high-frequency energy
+versus 1.3% at 4×. So scale as little as the platform allows — from 720p, 2× gets you to
+1440p, which exceeds the 720p minimum comfortably.</p>
+
+<p>Do not sharpen the upscaled photograph. The sharpening will not survive the feed's
+downscale, and the part that does survive is the halo. Spend that effort on the text and on
+composition contrast, which are the things that actually reach the viewer.</p>
+
+<h2>A checklist that matches how thumbnails are consumed</h2>
+
+<ol>
+  <li>Compose at final aspect ratio. Do not plan to crop after.</li>
+  <li>Upscale the photo only as far as the platform minimum requires.</li>
+  <li>Add text <em>after</em> upscaling, at master resolution, bold enough to survive 8:1.</li>
+  <li>Shrink the result to 320px wide and look at that — not at the master.</li>
+  <li>If it does not read at 320px, fix the composition. No filter will save it.</li>
+</ol>
+
+<p>Step 4 is the only one that matters and the only one almost nobody does. The file you are
+proud of and the file that gets clicked are separated by one downscale, and only the second
+one exists as far as the audience is concerned.</p>
+
+<h2>Reproducing the check</h2>
+
+<pre><code># the only test that reflects delivery
+master = Image.open("thumb_master.png")
+preview = master.resize((320, 180), Image.LANCZOS)
+preview.save("feed_preview.png")
+# look at feed_preview.png, not at master
+</code></pre>
+
+<h2>Try the whole loop</h2>
+
+<p>If the source frame is small, or you need headroom for multiple aspect ratios, a
+browser-based upscaler removes the install step:
+<a href="https://upgolab.com/en/upscale">UpgoLAB upscales photos and short video in the
+browser</a> to 2K and 4K. Use 2× for the photo, then compose text at the final size.</p>
+
+<p>Then shrink it to 320px and look. That is the only review that counts.</p>
+
+</article>
+<footer>
+Published by <a href="https://upgolab.com">UpgoLAB</a> — AI photo and short-video upscaling
+in the browser. Display-scale evaluation at 320×180 from a 2560px master.
+</footer>
+</main>
 </body>
 </html>
