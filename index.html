@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Making a 4K Thumbnail Master From a 720p Frame</title>
-<meta name="description" content="A thumbnail has one job: survive being shrunk. Measured round trip through an 8x master and back to 320px: the edge contrast gain from sharpening vanishes, but a small-radius pass is still worth 2.9 dB. The radius budget is the only number that matters.">
+<meta name="description" content="A thumbnail has one job: survive being shrunk. Measured round trip through an 8x master and back to 320px: the edge contrast gain from sharpening vanishes, but a small-radius pass still helps. On real photographs the radius budget is 0.25 feed pixels and the gain is about half a decibel — not the 2.9 dB a synthetic test suggests.">
 <link rel="canonical" href="https://celticgemini001.github.io/upgolab-thumbnail-4k-master/">
 <meta property="og:type" content="article">
 <meta property="og:title" content="Making a 4K Thumbnail Master From a 720p Frame">
@@ -77,7 +77,8 @@ that spread into the flat areas, which reads as a muddy halo.</p>
 <p><strong>Most of the sharpening you can see at 100% does not survive the feed — but not all
 of it, and the exception is measurable.</strong> The overshoot at a typical radius vanishes
 into the average. A small-radius pass that tightens the two-pixel transition the downscale
-itself created survives, and is worth 2.9 dB. The numbers are two sections down.</p>
+itself created survives. On the synthetic test scene it is worth 2.9 dB; on real photographs,
+re-measured further down, the figure is far smaller. The numbers are two sections down.</p>
 </div>
 
 <h2>What survives the shrink</h2>
@@ -127,9 +128,10 @@ versus 1.3% at 4×. So scale as little as the platform allows — from 720p, 2×
 1440p, which exceeds the 720p minimum comfortably.</p>
 
 <p>On sharpening, the measurement two sections below revises this: it is not that sharpening
-never survives, it is that the radius has a budget. Keep it under about 0.4 feed pixels —
-3px in a 2560px master — and it buys back 2.9 dB. Go past 0.5 and the halo is the only part
-that arrives.</p>
+never survives, it is that the radius has a budget. On the synthetic scene below that budget
+looks like 0.4 feed pixels — 3px in a 2560px master — worth 2.9 dB. The real-photograph sweep
+further down puts both numbers lower: 0.25 feed pixels and about half a decibel. Go past 0.5
+and the halo is the only part that arrives.</p>
 
 <h2>Testing that claim against the feed grid</h2>
 
@@ -217,6 +219,146 @@ thumbnail" has no basis in the pixels that reach the viewer. Use the smallest ma
 satisfies the platform minimum and your crop requirements, then spend the effort on the
 radius budget above.</p>
 
+<h2>Re-running the radius sweep on real photographs</h2>
+
+<p>The sweep above defines the feed-resolution image as ground truth. That isolates the
+resampler cleanly, but it is not how a thumbnail is made: the truth is an <em>original</em>
+photograph and the 320px feed is a lossy compression of it. Repeat the experiment on five
+stock photos with the original as truth and the optimum moves, changing the sign of the
+result at the radius recommended above.</p>
+
+<p>Original, centre-cropped to 16:9, downscaled to a 284×160 source — deliberately narrower
+than the 320px feed, so there is real upscaling to do — upscaled 4× to a 1136×720 master,
+unsharp mask at master resolution, then downscaled to 320×180 the way a feed does. Scored
+against the original at 320×180, averaged over four off-grid crops per cell so the result
+does not depend on resize phase.</p>
+
+<table>
+<tr><th>Photo</th><th>none</th><th>0.125</th><th>0.25</th><th>0.375</th><th>0.5</th>
+<th>0.75</th><th>1.0</th></tr>
+<tr><td>natural-hd</td><td class="num">37.44</td><td class="num">37.53</td>
+<td class="num"><strong>37.99</strong></td><td class="num">37.44</td>
+<td class="num">35.66</td><td class="num">32.40</td><td class="num">30.27</td></tr>
+<tr><td>cinema-vivid</td><td class="num">38.65</td><td class="num">38.77</td>
+<td class="num"><strong>39.11</strong></td><td class="num">38.11</td>
+<td class="num">35.72</td><td class="num">31.81</td><td class="num">29.36</td></tr>
+<tr><td>clear-reality</td><td class="num">39.49</td><td class="num">39.64</td>
+<td class="num"><strong>40.00</strong></td><td class="num">38.96</td>
+<td class="num">36.41</td><td class="num">32.26</td><td class="num">29.59</td></tr>
+<tr><td>true-texture</td><td class="num">42.84</td><td class="num">42.99</td>
+<td class="num"><strong>43.40</strong></td><td class="num">42.50</td>
+<td class="num">39.83</td><td class="num">35.54</td><td class="num">32.81</td></tr>
+<tr><td>ultra-crisp</td><td class="num">39.62</td><td class="num">39.81</td>
+<td class="num"><strong>40.12</strong></td><td class="num">39.32</td>
+<td class="num">37.26</td><td class="num">33.65</td><td class="num">31.29</td></tr>
+</table>
+<p class="meta">PSNR in dB against the original at 320×180, radius in feed pixels.</p>
+
+<p>All five peak at <strong>0.25</strong> with a mean gain of <strong>+0.52 dB</strong>,
+against +2.95 dB for 0.375 on the synthetic scene. The sign at the previously recommended
+radius flips: 0.375 now averages <strong>−0.34 dB</strong>, 0.5 averages −2.63 dB. The
+direction survives — small radius helps, large hurts — but the budget is smaller than this
+page said and the payoff about one-sixth as large.</p>
+
+<div class="callout">
+<p><strong>Corrected, not repeated.</strong> On photographic content the radius budget is
+<strong>0.25 feed pixels</strong> and the gain there is about <strong>half a decibel</strong>.
+The 0.375 figure and its 2.9 dB came from a synthetic scene whose truth was generated by the
+same resampler it was scored against. Use the direction; not the magnitude.</p>
+</div>
+
+<p>The mechanism shows up in high-frequency energy. At the optimum the feed carries
+<strong>89%</strong> of the original's HF energy, up from 81% unsharpened (0.887 vs 0.805
+on the first photo), and PSNR peaks just before the curve crosses 1.0. Past that it holds
+<em>more</em> HF than the truth — 1.076 at radius 0.5, 1.303 at 1.0 — and scores worse.
+Sharpening corrects blur the chain introduced; the budget ends when it invents detail
+instead. A real 284px source has no deficit an unsharp mask can close, which is why a
+synthetic scene built by upscaling its own truth cannot calibrate this.</p>
+
+<h2>How much source detail is enough</h2>
+
+<p>Sweeping source width at a fixed 4× master, feed width 320px:</p>
+
+<table>
+<tr><th>Source width</th><th>PSNR, no sharpening</th><th>Best radius</th><th>Gain</th></tr>
+<tr><td class="num">160px</td><td class="num">31.13</td><td class="num">0.25</td><td class="num">+0.12 dB</td></tr>
+<tr><td class="num">213px</td><td class="num">34.50</td><td class="num">0.25</td><td class="num">+0.29 dB</td></tr>
+<tr><td class="num">284px</td><td class="num">39.61</td><td class="num">0.25</td><td class="num"><strong>+0.52 dB</strong></td></tr>
+<tr><td class="num">356px</td><td class="num">45.98</td><td class="num">0.125</td><td class="num">+0.20 dB</td></tr>
+<tr><td class="num">427px</td><td class="num">50.94</td><td class="num">0.125</td><td class="num">+0.05 dB</td></tr>
+<tr><td class="num">480px</td><td class="num">53.06</td><td class="num">—</td><td class="num">0.00 dB</td></tr>
+<tr><td class="num">569px</td><td class="num">54.25</td><td class="num">—</td><td class="num">0.00 dB</td></tr>
+<tr><td class="num">711px</td><td class="num">55.20</td><td class="num">—</td><td class="num">0.00 dB</td></tr>
+</table>
+<p class="meta">Mean of five photos, 4× master, Lanczos downscale, feed 320×180.</p>
+
+<p>The gain peaks just below the feed width and returns <strong>exactly zero</strong> once
+the source is wider than it — at 53 dB and above the feed is already essentially the
+original, and the best radius is no sharpening at all. So "enough source" is <em>a little
+under the feed width</em>, not the platform minimum. Sharpening a master made from a source
+that already exceeds the feed is wasted effort at best and a measurable loss at worst.</p>
+
+<p>The radius is constant in <em>feed</em> pixels: at 2×, 3×, 4×, 6× and 8× on the same
+284px source the best radius is 0.25 every time, gaining +0.49 to +0.59 dB. The budget in
+master pixels is therefore <strong>0.25 × (master width ÷ 320)</strong> — <strong>2px</strong>
+for a 2560px master shown at 320px, not the 3px above. Exceeding it costs more than that
+section implies: 0.5 feed pixels already loses 2.6 dB on real photos.</p>
+
+<h2>Two results that undercut the method itself</h2>
+
+<p><strong>A large apparent gain can be sub-pixel alignment.</strong> With a box downscale
+and the master at exactly the phase the test assumed, sharpening scored
+<strong>+10.73 dB</strong> — implausible on its face. Shifting the master by a fraction of a
+feed pixel before the downscale, which is what any real crop or non-integer resize does,
+collapses it:</p>
+
+<table>
+<tr><th>Master offset</th><th>PSNR, no sharpening</th><th>PSNR at r=0.375</th><th>Gain</th></tr>
+<tr><td class="num">0</td><td class="num">31.50</td><td class="num">42.23</td><td class="num">+10.73 dB</td></tr>
+<tr><td class="num">0.125 px</td><td class="num">27.52</td><td class="num">28.91</td><td class="num">+1.39 dB</td></tr>
+<tr><td class="num">0.25 px</td><td class="num">26.92</td><td class="num">27.94</td><td class="num">+1.01 dB</td></tr>
+<tr><td class="num">0.5 px</td><td class="num">25.49</td><td class="num">25.83</td><td class="num">+0.34 dB</td></tr>
+</table>
+
+<p>An eighth of a feed pixel of alignment error removes 87% of the apparent gain, which is
+why the table above averages over four crops and why none of these numbers deserve more than
+one decimal place.</p>
+
+<p><strong>One source size was the synthetic protocol in disguise.</strong> At exactly 320px
+wide, early runs reported +1.03 dB — twice the neighbouring sizes — because source and truth
+become the same image, so the "truth" is again the resampler's own output. If a sweep shows
+one source size standing out by a factor of two, suspect the protocol first.</p>
+
+<h2>Reproducing it with a real original</h2>
+
+<p>Keep the source <em>below</em> 320px wide or the experiment stops testing anything:
+change <code>284, 160</code> to your source size and nothing else.</p>
+
+<pre><code>import numpy as np
+from PIL import Image, ImageFilter
+
+im = Image.open("photo.jpg").convert("L")
+w, h = im.size
+if w / h &gt; 16 / 9:                       # centre-crop to the feed aspect
+    nw = round(h * 16 / 9); im = im.crop(((w - nw)//2, 0, (w - nw)//2 + nw, h))
+else:
+    nh = round(w * 9 / 16); im = im.crop((0, (h - nh)//2, w, (h - nh)//2 + nh))
+
+truth = np.asarray(im.resize((320, 180), Image.LANCZOS), dtype=np.uint8)
+src   = im.resize((284, 160), Image.LANCZOS)      # source NARROWER than the feed
+for ratio in (2, 4, 8):
+    master = src.resize((284*ratio, 160*ratio), Image.LANCZOS)
+    for r_feed in (0, 0.125, 0.25, 0.375, 0.5, 1.0):
+        m = master if not r_feed else master.filter(
+            ImageFilter.UnsharpMask(radius=r_feed*ratio, percent=100, threshold=0))
+        feed = np.asarray(m.resize((320, 180), Image.LANCZOS), dtype=np.float64)
+        mse  = np.mean((feed - truth) ** 2)
+        print(ratio, r_feed, round(10*np.log10(255**2/mse), 2))
+</code></pre>
+
+<p>Scope is narrow: Lanczos downscale, JPEG-free, single image, luma only. A platform that
+bins chroma or uses a box downscale changes the absolute numbers.</p>
+
 <h2>Text: after the upscale wins on sharpness, loses on fidelity</h2>
 
 <p>The checklist says to render text after upscaling. Rendering it at 40px into the 320px
@@ -261,7 +403,10 @@ Results were stable to ±0.02 dB across five random seeds.</p>
 
 <ol>
   <li>Compose at final aspect ratio. Do not plan to crop after.</li>
-  <li>Upscale the photo only as far as the platform minimum requires.</li>
+  <li>Upscale the photo only as far as the platform minimum requires — and note that
+  sharpening only helps when the source is <em>narrower</em> than the final feed.</li>
+  <li>If you sharpen, use a radius of 0.25 × (master width ÷ 320) in master pixels,
+  which is 1px on a 1136px master and 2px on a 2272px one. Expect half a decibel.</li>
   <li>Add text <em>after</em> upscaling, at master resolution, bold enough to survive 8:1.</li>
   <li>Shrink the result to 320px wide and look at that — not at the master.</li>
   <li>If it does not read at 320px, fix the composition. No filter will save it.</li>
