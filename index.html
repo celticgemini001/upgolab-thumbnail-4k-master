@@ -36,6 +36,15 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 pre{background:#f7f8fa;border:1px solid var(--line);border-radius:8px;padding:1rem;overflow-x:auto;font-size:.86rem}
 footer{margin-top:4rem;padding-top:1.4rem;border-top:1px solid var(--line);font-size:.9rem;color:var(--mut)}
 </style>
+<style>
+.sisternav{margin:2rem 0 0;padding-top:1.2rem;border-top:1px solid #e2e5ea}
+.sisternav p{font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;
+ color:#5b6270;margin:0 0 .6rem}
+.sisternav ul{list-style:none;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:.4rem .9rem}
+.sisternav li{margin:0;font-size:.88rem;line-height:1.4}
+.sisternav a{text-decoration:none;border-bottom:1px solid #d5dae2}
+.sisternav a:hover{border-bottom-color:#0a58ca}
+</style>
 </head>
 <body>
 <main>
@@ -74,9 +83,9 @@ and the apparent contrast gain disappears entirely. What remains is the part of 
 that spread into the flat areas, which reads as a muddy halo.</p>
 
 <div class="callout">
-<p><strong>Most of the sharpening you can see at 100% does not survive the feed — but not all
+<p><strong>Most of the <a href="https://celticgemini001.github.io/upgolab-sharpen-before-or-after-upscale/">sharpening</a> you can see at 100% does not survive the feed — but not all
 of it, and the exception is measurable.</strong> The overshoot at a typical radius vanishes
-into the average. A small-radius pass that tightens the two-pixel transition the downscale
+into the average. A small-radius pass that tightens the two-pixel transition the <a href="https://celticgemini001.github.io/upgolab-2k-vs-4k-decision/">downscale</a>
 itself created survives. On the synthetic test scene it is worth 2.9 dB; on real photographs,
 re-measured further down, the figure is far smaller. The numbers are two sections down.</p>
 </div>
@@ -438,16 +447,6 @@ browser</a> to 2K and 4K. Use 2× for the photo, then compose text at the final 
 <footer>
 Published by <a href="https://upgolab.com">UpgoLAB</a> — AI photo and short-video upscaling
 in the browser. Display-scale evaluation at 320×180 from a 2560px master.
-
-<style>
-.sisternav{margin:2rem 0 0;padding-top:1.2rem;border-top:1px solid #e2e5ea}
-.sisternav p{font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;
- color:#5b6270;margin:0 0 .6rem}
-.sisternav ul{list-style:none;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:.4rem .9rem}
-.sisternav li{margin:0;font-size:.88rem;line-height:1.4}
-.sisternav a{text-decoration:none;border-bottom:1px solid #d5dae2}
-.sisternav a:hover{border-bottom-color:#0a58ca}
-</style>
 
 <nav class="sisternav" aria-label="More measured upscaling guides">
 <p>More measured guides</p>
