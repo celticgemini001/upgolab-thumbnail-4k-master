@@ -425,6 +425,209 @@ Results were stable to ±0.02 dB across five random seeds.</p>
 proud of and the file that gets clicked are separated by one downscale, and only the second
 one exists as far as the audience is concerned.</p>
 
+<h2>The transparent-PNG problem nobody checks at 320px</h2>
+
+<p>Every test above assumes an opaque master. A large share of real thumbnail masters are not:
+a cutout product on transparency, a logo, a sticker, a channel avatar, a PNG exported from a
+design tool with the background layer switched off. Those files go through one extra step the
+JPEG case never sees — <em>alpha compositing</em> — and the order of that step against the
+resize decides whether the edge of your subject is the colour you designed or something else
+entirely.</p>
+
+<p>The reason it is easy to miss: a PNG stores RGB in every pixel, including the ones with
+alpha zero. That colour is invisible in the file, is not shown by any viewer, and is set by
+whatever produced the export — usually pure black, sometimes white, occasionally the last
+fill colour left in the palette. Resize the RGBA image the obvious way — four channels,
+independently — and that invisible colour gets averaged into the visible edge. The subject
+grows a dark (or white) rim that was never in the design, and it only exists at the small
+size, which is the only size the audience sees.</p>
+
+<h3>Measuring it without a reference image</h3>
+
+<p>My first attempt compared the resized output against a 16× supersampled render and it
+failed its own sanity check: even a pipeline I could prove correct differed on 2.6–3.1% of
+pixels, because that test measures the source's rasterisation, not its alpha semantics. So I
+dropped the reference image and used a metric that needs no ground truth.</p>
+
+<p>The test sprite has four known foreground colours (a red disc, a green hairline ring, a
+blue bar, a yellow diagonal). For any composite <code>C</code> over a backdrop <code>b</code>
+with alpha <code>a</code>, the foreground implied by the output is
+<code>FG' = (C − b·(1−a)) / a</code>. A resize that respects alpha returns the design colour
+exactly, for every pixel with meaningful alpha. A resize that ignores alpha returns a value
+dragged toward the invisible backing. The error is the distance from <code>FG'</code> to the
+nearest design colour, in sRGB code values — no reference, nothing to tune, and a defect by
+definition rather than by comparison.</p>
+
+<p>Master 1280×720, output 320×180, Lanczos, transparent pixels set to black — the default
+from every renderer that does not think about it:</p>
+
+<table>
+<caption>Implied-foreground error, 1280→320, Lanczos, master's transparent RGB = black.
+11,916 pixels with alpha &gt; 0.2 in the output.</caption>
+<thead>
+<tr><th>Pipeline</th><th>Mean error</th><th>Pixels ≥ 20 off</th><th>Worst pixel</th></tr>
+</thead>
+<tbody>
+<tr><td>Four channels resized independently (OpenCV-class)</td><td>13.97</td><td>11.39%</td><td>175.9</td></tr>
+<tr><td><code>ffmpeg -vf scale=320:180:flags=lanczos</code></td><td>13.81</td><td>11.33%</td><td>175.8</td></tr>
+<tr><td>8-bit premultiply, then an RGBA image handed to Pillow</td><td>14.42</td><td>11.94%</td><td>222.7</td></tr>
+<tr><td>Pillow <code>RGBA</code> resize (premultiplies internally)</td><td>1.22</td><td>0.48%</td><td>33.2</td></tr>
+<tr><td>ffmpeg <code>premultiply,scale,unpremultiply</code></td><td>1.31</td><td>0.56%</td><td>33.3</td></tr>
+<tr><td>Float premultiply, each plane resized as <code>F</code> mode</td><td>0.00</td><td>0.00%</td><td>0.0</td></tr>
+</tbody>
+</table>
+
+<p>Three things in that table are worth stopping on.</p>
+
+<p><strong>Row 1 and row 2 are the same bug.</strong> A per-channel resize and a naive ffmpeg
+<code>scale</code> land within 0.16 of each other on a 255-point scale. ffmpeg does not
+premultiply unless you make it, and its default is what most pipelines get.</p>
+
+<p><strong>Row 3 is worse than doing nothing.</strong> This is the failure mode I hit myself
+while writing this section. The advice “premultiply before resizing” is correct, but if you
+premultiply into 8 bits and then hand the resulting RGBA buffer to a library that premultiplies
+internally, you multiply by alpha twice. The subject comes out 15% darker at the edges and the
+error mean is <em>higher</em> than the naive path (14.42 vs 13.97) — a fix that costs more than
+the disease, with plausible-looking output either way.</p>
+
+<p><strong>Row 6 is exact, not approximate.</strong> When the arithmetic is done in float on
+premultiplied planes, the implied foreground comes back to the design colour with zero error
+on every pixel. That is not luck: premultiplied alpha is the representation in which a
+weighted average of two pixels is the correct answer. Straight alpha is the representation in
+which it is not.</p>
+
+<h3>Why the 8-bit version of the fix is only half a fix</h3>
+
+<p>Premultiplying quantises. At alpha <code>a</code>, one step of an 8-bit premultiplied
+channel is worth <code>1/a</code> levels of the original colour, so the representable colour
+error is up to half that:</p>
+
+<p>At alpha 8/255 (0.031), one 8-bit step of a premultiplied channel is worth <strong>31.9
+levels</strong> of the original colour, so the best any 8-bit premultiplied pixel can do at 3%
+opacity is land within half a step. At alpha 26/255 (0.102) the step is 9.8 levels, at alpha
+51/255 (0.20) it is 5.0, and by alpha 0.5 it is 2.0 — which is where the eye stops caring on a
+1-pixel edge. The band where a feed thumbnail actually has partial alpha sits between 0.02 and
+0.5, exactly the band where 8-bit premultiplied storage is coarsest. Float premultiplied planes
+(row 6) skip the quantisation entirely; 16-bit premultiplied storage would too.</p>
+
+<p>Honest detail on the numbers: the step size is the general fact, the realised error depends
+on the colour. For the red disc's channel values the measured worst-case error was 8.75 levels
+at alpha 0.031, 3.85 at 0.102, and 0.0 at 0.20 — because 200 and 60 happen to divide cleanly by
+that denominator. A different brand colour gets a different number. What does not change is the
+denominator: 8 bits of premultiplied channel at low alpha is a coarser sampling grid than 8
+bits of straight channel, and it is the premultiplied one that has to be resampled.</p>
+
+<h3>What it looks like on a backdrop</h3>
+
+<p>The implied-foreground metric is diagnostic, not perceptual. To get the visible number I
+composited both outputs onto a white feed background and onto <code>#121212</code>, and took
+the per-pixel maximum channel difference between the alpha-blind and the float-premultiplied
+result.</p>
+
+<p>On white: mean 1.50, 99th percentile 45.7, and 2,842 pixels — 4.93% of the 320×180 frame —
+wrong by more than 8 levels, 736 of them by more than 40. On <code>#121212</code>: mean 1.49,
+99th percentile 45.7, 4.89% over 8 levels, 1,002 pixels over 40. The mean is small because the
+interior is untouched; the damage is confined to the alpha band, which is 2,331 pixels, or
+<strong>4.05% of the frame</strong>, with a median horizontal run of 1 pixel and a 90th
+percentile of 3. A one-pixel rim at the wrong luminance is not a subtle thing at 320px — it is
+literally the entire outline of the subject.</p>
+
+<p>The direction of the error is set by the invisible colour, not by the backdrop. With
+transparent black behind it, the damaged edge pixels sit a mean of <strong>22 luma levels too
+dark</strong>; with transparent white, <strong>16.6 too light</strong>. Which is why the same
+master can look acceptable in a light feed and dirty in a dark one with no change to the file.</p>
+
+<p>One result undercut a hypothesis I had: I expected the damage to scale with the reduction
+ratio. It does not. Reducing 2× gives 4.72% of pixels over 8 levels, 4× gives 4.93%, 8× gives
+4.44%. A 2× downscale is enough to produce the full fringe. This is not a
+“too many megapixels” problem, it is a compositing-order problem.</p>
+
+<h3>Two fixes, and what each costs</h3>
+
+<p>Both were measured against the same reference — the theme-composited master reduced with a
+BOX filter, which is the exact area average and the closest thing to a continuous-truth
+downscale available from a finite master:</p>
+
+<table>
+<caption>Maximum channel error against a BOX-downscale of the theme-composited master.
+Same master, same 320×180 output, same Lanczos filter.</caption>
+<thead>
+<tr><th>Approach</th><th>On white</th><th>On #121212</th><th>Needs the theme?</th></tr>
+</thead>
+<tbody>
+<tr><td>Float premultiply, resize, unpremultiply</td><td>0.48</td><td>0.44</td><td>No</td></tr>
+<tr><td>Composite on the theme at master size, then resize opaque</td><td>0.63</td><td>0.87</td><td>Yes</td></tr>
+<tr><td>Resize RGBA straight (baseline)</td><td>1.55</td><td>1.35</td><td>No</td></tr>
+</tbody>
+</table>
+
+<p>Float premultiply wins on both themes and does not need to know where the thumbnail will be
+displayed, so it is the default choice: the master stays one file, stays transparent, and can
+be re-rendered for any surface later. Flattening first is 25–50% worse but still three times
+better than the baseline, and it is the right call when you already know the theme and want to
+stop thinking about alpha — for a feed preview that will only ever appear on white, compositing
+white at master resolution and saving an opaque JPEG is one step, cannot be got wrong, and the
+rim is gone before the resize happens.</p>
+
+<p>Note the asymmetry in that table: flattening is a little worse on the dark theme (0.87)
+than on white (0.63), because compositing to white and then displaying on near-black is a
+different operation from compositing to near-black. If the same file will be served to both,
+float premultiply is the only option that does not have to be redone.</p>
+
+<p>And it survives the encoder. Comparing the two outputs after a real re-encode at feed
+quality: JPEG q80 still leaves 491 pixels more than 40 levels apart, q92 leaves 464, WebP q80
+leaves 511, q90 leaves 465. Encoding adds its own error everywhere, but it does not erase this
+one — the fringe is a large, coherent, low-frequency error and DCT quantisation is not
+targeting it.</p>
+
+<h3>A negative result: coverage is never damaged</h3>
+
+<p>I expected to find the alpha channel itself distorted — thinning on hairlines, thickening on
+high-contrast edges. It is not. Pillow's <code>RGBA</code> output alpha is byte-identical to
+resizing the alpha plane alone as an <code>L</code> image: maximum difference 0.00 across all
+57,600 pixels, not one pixel off by a single level. Whatever goes wrong in the straight-alpha
+path, it is entirely in the colour channels. Coverage, silhouette, and stroke weight come out
+the same in every pipeline in the first table.</p>
+
+<p>This matters for diagnosis: if a hairline looks wrong at 320px it is a luminance problem,
+and sharpening or a heavier stroke will not fix it as reliably as getting the compositing order
+right. And it means the cheap test below will not catch it — you have to look at colour, not at
+the alpha channel.</p>
+
+<h3>The check, and the one-line rule</h3>
+
+<p>The rule: <em>composite before you reduce, or premultiply in float — never resize RGBA
+straight, and never premultiply into 8 bits and then hand it to a library that premultiplies
+again.</em></p>
+
+<pre><code>import numpy as np
+from PIL import Image
+
+master = np.asarray(Image.open("cutout_master.png").convert("RGBA"), np.float64)
+a = master[..., 3:4] / 255.0
+pm = master.copy()
+pm[..., :3] *= a                                   # premultiply, float, in place
+
+# resize each plane independently as float: this is the step that keeps it exact
+planes = [np.asarray(Image.fromarray(pm[..., c], "F").resize((320, 180), Image.LANCZOS),
+                     np.float64) for c in range(4)]
+out = np.stack(planes, -1)
+ao = np.clip(out[..., 3:4] / 255.0, 0, 1)
+rgb = np.where(ao &gt; 0, out[..., :3] / np.maximum(ao, 1e-6), 255)   # unpremultiply
+preview = np.dstack([np.clip(rgb, 0, 255), out[..., 3]]).astype(np.uint8)
+
+Image.fromarray(preview, "RGBA").save("feed_preview.png")
+# then composite it on BOTH themes and look — a rim that reads on white may not on dark
+for bg in ((255, 255, 255), (18, 18, 18)):
+    al = preview[..., 3:4] / 255.0
+    flat = preview[..., :3] * al + np.array(bg) * (1 - al)
+    Image.fromarray(flat.astype(np.uint8), "RGB").save(f"check_{bg[0]}.png")
+</code></pre>
+
+<p>The last loop is the part that generalises. The single-review-image advice from the section
+above assumes an opaque master; with alpha in play there are two review images, one per theme,
+because the failure is a rim that only exists against a background the file has never seen.</p>
+
 <h2>Reproducing the check</h2>
 
 <pre><code># the only test that reflects delivery
